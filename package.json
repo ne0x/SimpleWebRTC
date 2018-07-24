@@ -8,7 +8,7 @@
   "main": "./src/simplewebrtc.js",
   "description": "World's easiest webrtc",
   "dependencies": {
-    "attachmediastream": "^2.0.2",
+    "attachmediastream": "^2.0.3",
     "filetransfer": "^2.0.5",
     "localmedia": "^4.0.2",
     "mockconsole": "0.0.1",
