@@ -275,29 +275,42 @@ SimpleWebRTC.prototype.disconnect = function () {
 
 SimpleWebRTC.prototype.handlePeerStreamAdded = function (peer) {
     var self = this;
-    var container = this.getRemoteVideoContainer();
-    var video = attachMediaStream(peer.stream);
+    console.log('peerStreamAdded', peer);
+    this.webrtc.on('iceConnectionStateChange', on);
 
-    // store video element as part of peer for easy removal
-    peer.videoEl = video;
-    video.id = this.getDomId(peer);
-
-    if (container) container.appendChild(video);
-
-    this.emit('videoAdded', video, peer);
-
-    // send our mute status to new peer if we're muted
-    // currently called with a small delay because it arrives before
-    // the video element is created otherwise (which happens after
-    // the async setRemoteDescription-createAnswer)
-    window.setTimeout(function () {
-        if (!self.webrtc.isAudioEnabled()) {
-            peer.send('mute', {name: 'audio'});
+    function on(e) {
+        if (e.currentTarget.iceConnectionState == 'completed') {
+            self.webrtc.off('iceConnectionStateChange', on);
+            attachStream.call(self);
         }
-        if (!self.webrtc.isVideoEnabled()) {
-            peer.send('mute', {name: 'video'});
-        }
-    }, 250);
+    }
+
+    function attachStream() {
+        var self = this;
+        var container = this.getRemoteVideoContainer();
+        var video = attachMediaStream(peer.stream);
+
+        // store video element as part of peer for easy removal
+        peer.videoEl = video;
+        video.id = this.getDomId(peer);
+
+        if (container) container.appendChild(video);
+
+        this.emit('videoAdded', video, peer);
+
+        // send our mute status to new peer if we're muted
+        // currently called with a small delay because it arrives before
+        // the video element is created otherwise (which happens after
+        // the async setRemoteDescription-createAnswer)
+        window.setTimeout(function () {
+            if (!self.webrtc.isAudioEnabled()) {
+                peer.send('mute', {name: 'audio'});
+            }
+            if (!self.webrtc.isVideoEnabled()) {
+                peer.send('mute', {name: 'video'});
+            }
+        }, 250);
+    }
 };
 
 SimpleWebRTC.prototype.handlePeerStreamRemoved = function (peer) {
