@@ -274,19 +274,11 @@ SimpleWebRTC.prototype.disconnect = function () {
 };
 
 SimpleWebRTC.prototype.handlePeerStreamAdded = function (peer) {
-    var self = this;
+    var waitCompletedStateTimer;
     console.log('peerStreamAdded', peer);
-    this.webrtc.on('iceConnectionStateChange', on);
 
-    function on(e) {
-        if (e.currentTarget.iceConnectionState == 'completed') {
-            self.webrtc.off('iceConnectionStateChange', on);
-            attachStream.call(self);
-        }
-    }
-
-    function attachStream() {
-        var self = this;
+    var attachStream = (function() {
+        console.log('attachStream');
         var container = this.getRemoteVideoContainer();
         var video = attachMediaStream(peer.stream);
 
@@ -302,15 +294,42 @@ SimpleWebRTC.prototype.handlePeerStreamAdded = function (peer) {
         // currently called with a small delay because it arrives before
         // the video element is created otherwise (which happens after
         // the async setRemoteDescription-createAnswer)
-        window.setTimeout(function () {
-            if (!self.webrtc.isAudioEnabled()) {
+        window.setTimeout((function () {
+            if (!this.webrtc.isAudioEnabled()) {
                 peer.send('mute', {name: 'audio'});
             }
-            if (!self.webrtc.isVideoEnabled()) {
+            if (!this.webrtc.isVideoEnabled()) {
                 peer.send('mute', {name: 'video'});
             }
-        }, 250);
-    }
+        }).bind(this), 250);
+    }).bind(this);
+
+    var handleIceConnectionStateChange = (function (e) {
+        console.log('iceConnectionStateChange', e.currentTarget.iceConnectionState);
+        switch (e.currentTarget.iceConnectionState) {
+            case 'connected':
+                // sometimes ICE state goes to Connected, but never Completed
+                waitCompletedStateTimer = window.setTimeout((function () {
+                    console.log('iceConnectionState - connected -> attachStream');
+                    readyToAttachStream();
+                }).bind(this), 1000);
+                break;
+            case 'completed':
+                console.log('iceConnectionState - completed -> attachStream');
+                readyToAttachStream();
+                break;
+        }
+    }).bind(this);
+
+    var readyToAttachStream = (function () {
+        window.clearTimeout(waitCompletedStateTimer);
+        this.webrtc.off('iceConnectionStateChange', handleIceConnectionStateChange);
+        attachStream();
+    }).bind(this);
+
+    this.webrtc.on('iceConnectionStateChange', handleIceConnectionStateChange);
+
+
 };
 
 SimpleWebRTC.prototype.handlePeerStreamRemoved = function (peer) {
