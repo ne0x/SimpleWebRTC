@@ -150,6 +150,8 @@ function SimpleWebRTC(opts) {
     this.webrtc.on('peerStreamAdded', this.handlePeerStreamAdded.bind(this));
     this.webrtc.on('peerStreamRemoved', this.handlePeerStreamRemoved.bind(this));
 
+    this.webrtc.on('iceConnectionStateChange', this.handleIceConnectionStateChange.bind(this));
+
     // echo cancellation attempts
     if (this.config.adjustPeerVolume) {
         this.webrtc.on('speaking', this.setVolumeForAll.bind(this, this.config.peerVolumeWhenSpeaking));
@@ -274,7 +276,6 @@ SimpleWebRTC.prototype.disconnect = function () {
 };
 
 SimpleWebRTC.prototype.handlePeerStreamAdded = function (peer) {
-    var waitCompletedStateTimer;
     console.log('peerStreamAdded', peer);
 
     var attachStream = (function() {
@@ -304,32 +305,7 @@ SimpleWebRTC.prototype.handlePeerStreamAdded = function (peer) {
         }).bind(this), 250);
     }).bind(this);
 
-    var handleIceConnectionStateChange = (function (e) {
-        console.log('iceConnectionStateChange', e.currentTarget.iceConnectionState);
-        switch (e.currentTarget.iceConnectionState) {
-            case 'connected':
-                // sometimes ICE state goes to Connected, but never Completed
-                waitCompletedStateTimer = window.setTimeout((function () {
-                    console.log('iceConnectionState - connected -> attachStream');
-                    readyToAttachStream();
-                }).bind(this), 1000);
-                break;
-            case 'completed':
-                console.log('iceConnectionState - completed -> attachStream');
-                readyToAttachStream();
-                break;
-        }
-    }).bind(this);
-
-    var readyToAttachStream = (function () {
-        window.clearTimeout(waitCompletedStateTimer);
-        this.webrtc.off('iceConnectionStateChange', handleIceConnectionStateChange);
-        attachStream();
-    }).bind(this);
-
-    this.webrtc.on('iceConnectionStateChange', handleIceConnectionStateChange);
-
-
+    window.setTimeout(attachStream, 0);
 };
 
 SimpleWebRTC.prototype.handlePeerStreamRemoved = function (peer) {
@@ -340,6 +316,10 @@ SimpleWebRTC.prototype.handlePeerStreamRemoved = function (peer) {
     }
     if (videoEl) this.emit('videoRemoved', videoEl, peer);
 };
+
+SimpleWebRTC.prototype.handleIceConnectionStateChange = (function (e) {
+    console.log('iceConnectionStateChange', e.currentTarget.iceConnectionState);
+});
 
 SimpleWebRTC.prototype.getDomId = function (peer) {
     return [peer.id, peer.type, peer.broadcaster ? 'broadcasting' : 'incoming'].join('_');
