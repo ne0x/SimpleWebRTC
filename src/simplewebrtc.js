@@ -158,15 +158,10 @@ function SimpleWebRTC(opts) {
         this.webrtc.on('stoppedSpeaking', this.setVolumeForAll.bind(this, 1));
     }
 
-    connection.on('stunservers', function (args) {
+    connection.on('iceservers', function (args) {
         // resets/overrides the config
         self.webrtc.config.peerConnectionConfig.iceServers = args;
-        self.emit('stunservers', args);
-    });
-    connection.on('turnservers', function (args) {
-        // appends to the config
-        self.webrtc.config.peerConnectionConfig.iceServers = self.webrtc.config.peerConnectionConfig.iceServers.concat(args);
-        self.emit('turnservers', args);
+        self.emit('iceservers', args);
     });
 
     this.webrtc.on('iceFailed', function (peer) {
