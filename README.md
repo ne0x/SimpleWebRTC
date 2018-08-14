@@ -202,9 +202,11 @@ webrtc.on('connectionReady', function (sessionId) {
 `'channelMessage', peer, channelLabel, {messageType, payload}` - emitted when a broadcast message to all peers is received via dataChannel by using the method sendDirectlyToAll(). 
 
 
-`'iceservers', [...args]` - emitted when the signaling connection emits the
+`'stunservers', [...args]` - emitted when the signaling connection emits the
 same event
 
+`'turnservers', [...args]` - emitted when the signaling connection emits the
+same event
 
 `'localScreenAdded', el` - emitted after triggering the start of screen sharing
 
