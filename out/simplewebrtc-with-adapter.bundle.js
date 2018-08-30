@@ -16825,15 +16825,16 @@ SimpleWebRTC.prototype.handlePeerStreamAdded = function (peer) {
     var attachStream = (function() {
         console.log('attachStream');
         var container = this.getRemoteVideoContainer();
-        var video = attachMediaStream(peer.stream);
+
+        var video = container.querySelector('.src-empty');
+        video.classList.remove('src-empty');
+        video.srcObject = peer.stream;
 
         // store video element as part of peer for easy removal
         peer.videoEl = video;
         video.id = this.getDomId(peer);
 
-        if (container) container.appendChild(video);
-
-        this.emit('videoAdded', video, peer);
+        this.emit('videoAdded', video, peer, this.getRemoteVideosCount());
 
         // send our mute status to new peer if we're muted
         // currently called with a small delay because it arrives before
@@ -16853,12 +16854,13 @@ SimpleWebRTC.prototype.handlePeerStreamAdded = function (peer) {
 };
 
 SimpleWebRTC.prototype.handlePeerStreamRemoved = function (peer) {
-    var container = this.getRemoteVideoContainer();
     var videoEl = peer.videoEl;
-    if (this.config.autoRemoveVideos && container && videoEl) {
-        container.removeChild(videoEl);
+    if (videoEl) {
+        videoEl.srcObject = null;
+        videoEl.id = null;
+        video.classList.add('src-empty');
+        this.emit('videoRemoved', videoEl, peer, this.getRemoteVideosCount());
     }
-    if (videoEl) this.emit('videoRemoved', videoEl, peer);
 };
 
 SimpleWebRTC.prototype.handleIceConnectionStateChange = (function (e) {
@@ -16956,6 +16958,14 @@ SimpleWebRTC.prototype.getLocalVideoContainer = function () {
 
 SimpleWebRTC.prototype.getRemoteVideoContainer = function () {
     return this.getEl(this.config.remoteVideosEl);
+};
+
+SimpleWebRTC.prototype.getRemoteVideosCount = function () {
+    var container = this.getRemoteVideoContainer();
+    if (container) {
+        return container.querySelectorAll('video:not(.src-empty)').length;
+    }
+    return null;
 };
 
 SimpleWebRTC.prototype.shareScreen = function (cb) {
