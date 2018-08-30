@@ -308,7 +308,7 @@ SimpleWebRTC.prototype.handlePeerStreamRemoved = function (peer) {
     var video = peer.videoEl;
     if (video) {
         video.srcObject = null;
-        video.id = null;
+        video.removeAttribute('id');
         video.classList.add('src-empty');
         this.emit('videoRemoved', video, peer, this.getRemoteVideosCount());
     }
