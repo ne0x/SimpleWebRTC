@@ -285,7 +285,9 @@ SimpleWebRTC.prototype.handlePeerStreamAdded = function (peer) {
         peer.videoEl = video;
         video.id = this.getDomId(peer);
 
-        this.emit('videoAdded', video, peer, this.getRemoteVideosCount());
+        setTimeout((function () {
+            this.emit('videoAdded', video, peer, this.getRemoteVideosCount());
+        }).bind(this), 0);
 
         // send our mute status to new peer if we're muted
         // currently called with a small delay because it arrives before
@@ -310,7 +312,9 @@ SimpleWebRTC.prototype.handlePeerStreamRemoved = function (peer) {
         video.srcObject = null;
         video.id = null;
         video.classList.add('src-empty');
-        this.emit('videoRemoved', video, peer, this.getRemoteVideosCount());
+        setTimeout((function () {
+            this.emit('videoRemoved', video, peer, this.getRemoteVideosCount());
+        }).bind(this), 0);
     }
 };
 
