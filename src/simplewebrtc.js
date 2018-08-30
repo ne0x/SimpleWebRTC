@@ -305,12 +305,12 @@ SimpleWebRTC.prototype.handlePeerStreamAdded = function (peer) {
 };
 
 SimpleWebRTC.prototype.handlePeerStreamRemoved = function (peer) {
-    var videoEl = peer.videoEl;
-    if (videoEl) {
-        videoEl.srcObject = null;
-        videoEl.id = null;
+    var video = peer.videoEl;
+    if (video) {
+        video.srcObject = null;
+        video.id = null;
         video.classList.add('src-empty');
-        this.emit('videoRemoved', videoEl, peer, this.getRemoteVideosCount());
+        this.emit('videoRemoved', video, peer, this.getRemoteVideosCount());
     }
 };
 
