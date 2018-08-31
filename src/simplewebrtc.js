@@ -370,6 +370,7 @@ SimpleWebRTC.prototype.startLocalVideo = function () {
         } else {
             var video = this.getLocalVideoContainer();
             if (video) {
+                video.muted = true;
                 video.srcObject = stream;
             }
         }
