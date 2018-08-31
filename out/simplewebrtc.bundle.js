@@ -102,24 +102,13 @@ module.exports.Receiver = Receiver;
 
 },{"util":18,"wildemitter":32}],2:[function(require,module,exports){
 var adapter = require('webrtc-adapter');
-// cache for constraints and callback
-var cache = {};
 
 module.exports = function (constraints, cb) {
     var hasConstraints = arguments.length === 2;
     var callback = hasConstraints ? cb : constraints;
     var error;
 
-    if (typeof window === 'undefined' || window.location.protocol === 'http:') {
-        error = new Error('NavigatorUserMediaError');
-        error.name = 'HTTPS_REQUIRED';
-        return callback(error);
-    }
-
     if (adapter.browserDetails.browser === 'chrome') {
-        var chromever = adapter.browserDetails.version;
-        var isCef = !window.chrome.webstore;
-
         // check that the extension is installed by looking for a
         // sessionStorage variable that contains the extension id
         // this has to be set after installation unless the content
@@ -174,113 +163,34 @@ module.exports = function (constraints, cb) {
                     });
                 }
             });
-        } else if (isCef || (chromever >= 26 && chromever <= 35)) {
-            // chrome 26 - chrome 33 way to do it -- requires bad chrome://flags
-            // note: this is basically in maintenance mode and will go away soon
-            constraints = (hasConstraints && constraints) || {
-                video: {
-                    mandatory: {
-                        googLeakyBucket: true,
-                        maxWidth: window.screen.width,
-                        maxHeight: window.screen.height,
-                        maxFrameRate: 3,
-                        chromeMediaSource: 'screen'
-                    }
-                }
-            };
-            window.navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
-                callback(null, stream);
-            }).catch(function (err) {
-                callback(err);
-            });
-        } else {
-            // chrome 34+ way requiring an extension
-            var pending = window.setTimeout(function () {
-                error = new Error('NavigatorUserMediaError');
-                error.name = 'EXTENSION_UNAVAILABLE';
-                return callback(error);
-            }, 1000);
-            cache[pending] = [callback, hasConstraints ? constraints : null];
-            window.postMessage({ type: 'getScreen', id: pending }, '*');
-        }
-    } else if (adapter.browserDetails.browser === 'firefox') {
-        if (adapter.browserDetails.version >= 33) {
-            constraints = (hasConstraints && constraints) || {
-                video: {
-                    mozMediaSource: 'window',
-                    mediaSource: 'window'
-                }
-            };
-            window.navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
-                callback(null, stream);
-                var lastTime = stream.currentTime;
-                var polly = window.setInterval(function () {
-                    if (!stream) window.clearInterval(polly);
-                    if (stream.currentTime == lastTime) {
-                        window.clearInterval(polly);
-                        if (stream.onended) {
-                            stream.onended();
-                        }
-                    }
-                    lastTime = stream.currentTime;
-                }, 500);
-            }).catch(function (err) {
-                callback(err);
-            });
-        } else {
-            error = new Error('NavigatorUserMediaError');
-            error.name = 'EXTENSION_UNAVAILABLE'; // does not make much sense but...
-            callback(error);
-        }
-    } else if (adapter.browserDetails.browser === 'MicrosoftEdge') {
-        if ('getDisplayMedia' in window.navigator) {
-            window.navigator.getDisplayMedia({video: true}).then(function (stream) {
-                callback(null, stream);
-            }).catch(function (err) {
-                callback(err);
-            });
         } else {
             error = new Error('Screensharing is not supported');
             error.name = 'NotSupportedError';
             callback(error);
         }
+    } else if (adapter.browserDetails.browser === 'firefox' && adapter.browserDetails.version >= 33) {
+        constraints = (hasConstraints && constraints) || {
+            video: {
+                mediaSource: 'window'
+            }
+        };
+        window.navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
+            callback(null, stream);
+        }).catch(function (err) {
+            callback(err);
+        });
+    } else if (adapter.browserDetails.browser === 'edge' && 'getDisplayMedia' in window.navigator) {
+        window.navigator.getDisplayMedia({video: true}).then(function (stream) {
+            callback(null, stream);
+        }).catch(function (err) {
+            callback(err);
+        });
+    } else {
+        error = new Error('Screensharing is not supported');
+        error.name = 'NotSupportedError';
+        callback(error);
     }
 };
-
-typeof window !== 'undefined' && window.addEventListener('message', function (event) {
-    if (event.origin != window.location.origin) {
-        return;
-    }
-    if (event.data.type == 'gotScreen' && cache[event.data.id]) {
-        var data = cache[event.data.id];
-        var constraints = data[1];
-        var callback = data[0];
-        delete cache[event.data.id];
-
-        if (event.data.sourceId === '') { // user canceled
-            var error = new Error('NavigatorUserMediaError');
-            error.name = 'NotAllowedError';
-            callback(error);
-        } else {
-            constraints = constraints || {audio: false, video: {
-                mandatory: {
-                    chromeMediaSource: 'desktop',
-                    maxWidth: window.screen.width,
-                    maxHeight: window.screen.height,
-                    maxFrameRate: 3
-                }
-            }};
-            constraints.video.mandatory.chromeMediaSourceId = event.data.sourceId;
-            window.navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
-                callback(null, stream);
-            }).catch(function (err) {
-                callback(err);
-            });
-        }
-    } else if (event.data.type == 'getScreenPending') {
-        window.clearTimeout(event.data.id);
-    }
-});
 
 },{"webrtc-adapter":19}],3:[function(require,module,exports){
 var WildEmitter = require('wildemitter');
@@ -308,7 +218,6 @@ var audioContext = null;
 module.exports = function(stream, options) {
   var harker = new WildEmitter();
 
-
   // make it not break in non-supported browsers
   if (!audioContextType) return harker;
 
@@ -321,10 +230,9 @@ module.exports = function(stream, options) {
       history = options.history || 10,
       running = true;
 
-  //Setup Audio Context
-  if (!audioContext) {
-    audioContext = new audioContextType();
-  }
+  // Ensure that just a single AudioContext is internally created
+  audioContext = options.audioContext || audioContext || new audioContextType();
+
   var sourceNode, fftBins, analyser;
 
   analyser = audioContext.createAnalyser();
@@ -350,10 +258,10 @@ module.exports = function(stream, options) {
   harker.speaking = false;
 
   harker.suspend = function() {
-    audioContext.suspend();
+    return audioContext.suspend();
   }
   harker.resume = function() {
-    audioContext.resume();
+    return audioContext.resume();
   }
   Object.defineProperty(harker, 'state', { get: function() {
     return audioContext.state;
@@ -426,11 +334,35 @@ module.exports = function(stream, options) {
   };
   looper();
 
-
   return harker;
 }
 
 },{"wildemitter":32}],4:[function(require,module,exports){
+if (typeof Object.create === 'function') {
+  // implementation from standard node.js 'util' module
+  module.exports = function inherits(ctor, superCtor) {
+    ctor.super_ = superCtor
+    ctor.prototype = Object.create(superCtor.prototype, {
+      constructor: {
+        value: ctor,
+        enumerable: false,
+        writable: true,
+        configurable: true
+      }
+    });
+  };
+} else {
+  // old school shim for old browsers
+  module.exports = function inherits(ctor, superCtor) {
+    ctor.super_ = superCtor
+    var TempCtor = function () {}
+    TempCtor.prototype = superCtor.prototype
+    ctor.prototype = new TempCtor()
+    ctor.prototype.constructor = ctor
+  }
+}
+
+},{}],5:[function(require,module,exports){
 var util = require('util');
 var hark = require('hark');
 var getScreenMedia = require('getscreenmedia');
@@ -757,7 +689,7 @@ LocalMedia.prototype._stopAudioMonitor = function (stream) {
 
 module.exports = LocalMedia;
 
-},{"getscreenmedia":2,"hark":3,"mockconsole":6,"util":18,"wildemitter":32}],5:[function(require,module,exports){
+},{"getscreenmedia":2,"hark":3,"mockconsole":7,"util":18,"wildemitter":32}],6:[function(require,module,exports){
 (function (global){
 /**
  * lodash (Custom Build) <https://lodash.com/>
@@ -2509,7 +2441,7 @@ function stubFalse() {
 module.exports = cloneDeep;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 var methods = "assert,count,debug,dir,dirxml,error,exception,group,groupCollapsed,groupEnd,info,log,markTimeline,profile,profileEnd,time,timeEnd,trace,warn".split(",");
 var l = methods.length;
 var fn = function () {};
@@ -2521,7 +2453,7 @@ while (l--) {
 
 module.exports = mockconsole;
 
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -2707,7 +2639,7 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],8:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 /*
  *  Copyright (c) 2017 The WebRTC project authors. All Rights Reserved.
  *
@@ -4546,7 +4478,7 @@ module.exports = function(window, edgeVersion) {
   return RTCPeerConnection;
 };
 
-},{"sdp":15}],9:[function(require,module,exports){
+},{"sdp":16}],10:[function(require,module,exports){
 var util = require('util');
 var SJJ = require('sdp-jingle-json');
 var WildEmitter = require('wildemitter');
@@ -5493,7 +5425,7 @@ PeerConnection.prototype.getStats = function () {
 
 module.exports = PeerConnection;
 
-},{"lodash.clonedeep":5,"sdp-jingle-json":10,"util":18,"wildemitter":32}],10:[function(require,module,exports){
+},{"lodash.clonedeep":6,"sdp-jingle-json":11,"util":18,"wildemitter":32}],11:[function(require,module,exports){
 var toSDP = require('./lib/tosdp');
 var toJSON = require('./lib/tojson');
 
@@ -5615,7 +5547,7 @@ exports.toCandidateJSON = toJSON.toCandidateJSON;
 exports.toMediaJSON = toJSON.toMediaJSON;
 exports.toSessionJSON = toJSON.toSessionJSON;
 
-},{"./lib/tojson":13,"./lib/tosdp":14}],11:[function(require,module,exports){
+},{"./lib/tojson":14,"./lib/tosdp":15}],12:[function(require,module,exports){
 exports.lines = function (sdp) {
     return sdp.split(/\r?\n/).filter(function (line) {
         return line.length > 0;
@@ -5886,7 +5818,7 @@ exports.msid = function (line) {
     };
 };
 
-},{}],12:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 module.exports = {
     initiator: {
         incoming: {
@@ -5934,7 +5866,7 @@ module.exports = {
     }
 };
 
-},{}],13:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 var SENDERS = require('./senders');
 var parsers = require('./parsers');
 var idCounter = Math.random();
@@ -6158,7 +6090,7 @@ exports.toCandidateJSON = function (line) {
     return candidate;
 };
 
-},{"./parsers":11,"./senders":12}],14:[function(require,module,exports){
+},{"./parsers":12,"./senders":13}],15:[function(require,module,exports){
 var SENDERS = require('./senders');
 
 
@@ -6404,7 +6336,7 @@ exports.toCandidateSDP = function (candidate) {
     return 'a=candidate:' + sdp.join(' ');
 };
 
-},{"./senders":12}],15:[function(require,module,exports){
+},{"./senders":13}],16:[function(require,module,exports){
  /* eslint-env node */
 'use strict';
 
@@ -7114,31 +7046,6 @@ if (typeof module === 'object') {
   module.exports = SDPUtils;
 }
 
-},{}],16:[function(require,module,exports){
-if (typeof Object.create === 'function') {
-  // implementation from standard node.js 'util' module
-  module.exports = function inherits(ctor, superCtor) {
-    ctor.super_ = superCtor
-    ctor.prototype = Object.create(superCtor.prototype, {
-      constructor: {
-        value: ctor,
-        enumerable: false,
-        writable: true,
-        configurable: true
-      }
-    });
-  };
-} else {
-  // old school shim for old browsers
-  module.exports = function inherits(ctor, superCtor) {
-    ctor.super_ = superCtor
-    var TempCtor = function () {}
-    TempCtor.prototype = superCtor.prototype
-    ctor.prototype = new TempCtor()
-    ctor.prototype.constructor = ctor
-  }
-}
-
 },{}],17:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
@@ -7736,7 +7643,7 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":17,"_process":7,"inherits":16}],19:[function(require,module,exports){
+},{"./support/isBuffer":17,"_process":8,"inherits":4}],19:[function(require,module,exports){
 (function (global){
 /*
  *  Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
@@ -9392,7 +9299,7 @@ module.exports = {
   }
 };
 
-},{"./utils":30,"sdp":15}],24:[function(require,module,exports){
+},{"./utils":30,"sdp":16}],24:[function(require,module,exports){
 /*
  *  Copyright (c) 2016 The WebRTC project authors. All Rights Reserved.
  *
@@ -9482,7 +9389,7 @@ module.exports = {
   }
 };
 
-},{"../utils":30,"./filtericeservers":25,"./getusermedia":26,"rtcpeerconnection-shim":8}],25:[function(require,module,exports){
+},{"../utils":30,"./filtericeservers":25,"./getusermedia":26,"rtcpeerconnection-shim":9}],25:[function(require,module,exports){
 /*
  *  Copyright (c) 2018 The WebRTC project authors. All Rights Reserved.
  *
@@ -11090,7 +10997,7 @@ Peer.prototype.sendFile = function (file) {
 
 module.exports = Peer;
 
-},{"filetransfer":1,"rtcpeerconnection":9,"util":18,"webrtcsupport":31,"wildemitter":32}],34:[function(require,module,exports){
+},{"filetransfer":1,"rtcpeerconnection":10,"util":18,"webrtcsupport":31,"wildemitter":32}],34:[function(require,module,exports){
 var WebRTC = require('./webrtc');
 var WildEmitter = require('wildemitter');
 var webrtcSupport = require('webrtcsupport');
@@ -11568,7 +11475,7 @@ SimpleWebRTC.prototype.sendFile = function () {
 
 module.exports = SimpleWebRTC;
 
-},{"./webrtc":35,"mockconsole":6,"webrtcsupport":31,"wildemitter":32}],35:[function(require,module,exports){
+},{"./webrtc":35,"mockconsole":7,"webrtcsupport":31,"wildemitter":32}],35:[function(require,module,exports){
 var util = require('util');
 var webrtcSupport = require('webrtcsupport');
 var mockconsole = require('mockconsole');
@@ -11726,5 +11633,5 @@ WebRTC.prototype.sendDirectlyToAll = function (channel, message, payload) {
 
 module.exports = WebRTC;
 
-},{"./peer":33,"localmedia":4,"mockconsole":6,"util":18,"webrtcsupport":31}]},{},[34])(34)
+},{"./peer":33,"localmedia":5,"mockconsole":7,"util":18,"webrtcsupport":31}]},{},[34])(34)
 });
